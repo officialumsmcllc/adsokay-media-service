@@ -9,7 +9,9 @@ import os
 
 IMPORTER_URL = os.getenv("IMPORTER_URL", "https://admin.adsokay.com/olx_importer_backend.php")
 SECRET = os.getenv("IMPORTER_SECRET", "adsokay_olx_secret_2026")
-MEDIA_SERVER_URL = os.getenv("MEDIA_SERVER_URL", "http://127.0.0.1:8000")
+PORT = os.getenv("PORT", "8000")
+MEDIA_SERVER_URL = os.getenv("MEDIA_SERVER_URL", f"http://127.0.0.1:{PORT}")
+PUBLIC_MEDIA_URL = os.getenv("RENDER_EXTERNAL_URL", "https://adsokay-media-service.onrender.com").rstrip("/")
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -23,19 +25,20 @@ def log(msg):
 def save_images_to_render(img_urls):
     if not img_urls:
         return []
-    try:
-        r = requests.post(
-            f"{MEDIA_SERVER_URL}/api/save-remote-images",
-            json={"urls": img_urls, "prefix": "dubi", "max_count": 5},
-            headers={"X-Secret": SECRET},
-            timeout=25
-        )
-        if r.status_code == 200:
-            res = r.json()
-            if res.get("images"):
-                return res["images"]
-    except Exception as e:
-        log(f"Media server download error: {e}")
+    for endpoint in [MEDIA_SERVER_URL, PUBLIC_MEDIA_URL]:
+        try:
+            r = requests.post(
+                f"{endpoint}/api/save-remote-images",
+                json={"urls": img_urls, "prefix": "dubi", "max_count": 5},
+                headers={"X-Secret": SECRET},
+                timeout=25
+            )
+            if r.status_code == 200:
+                res = r.json()
+                if res.get("images"):
+                    return res["images"]
+        except Exception as e:
+            pass
     return img_urls[:5]
 
 def get_all_dealer_urls():

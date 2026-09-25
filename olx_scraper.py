@@ -12,8 +12,10 @@ import html
 IMPORTER_URL = os.getenv("IMPORTER_URL", "https://admin.adsokay.com/olx_importer_backend.php")
 SECRET = os.getenv("IMPORTER_SECRET", "adsokay_olx_secret_2026")
 
-# Local media server endpoint on Render
-MEDIA_SERVER_URL = os.getenv("MEDIA_SERVER_URL", "http://127.0.0.1:8000")
+# Media server endpoint on Render
+PORT = os.getenv("PORT", "8000")
+MEDIA_SERVER_URL = os.getenv("MEDIA_SERVER_URL", f"http://127.0.0.1:{PORT}")
+PUBLIC_MEDIA_URL = os.getenv("RENDER_EXTERNAL_URL", "https://adsokay-media-service.onrender.com").rstrip("/")
 
 PAK_FIRST_NAMES = [
     'Muhammad', 'Ali', 'Hamza', 'Usman', 'Bilal', 'Zubair', 'Farhan', 'Shahid', 'Kashif', 'Waqas',
@@ -121,19 +123,20 @@ def save_images_to_render(img_urls):
     """Sends external image URLs to Render media service to save on Persistent Disk"""
     if not img_urls:
         return []
-    try:
-        r = requests.post(
-            f"{MEDIA_SERVER_URL}/api/save-remote-images",
-            json={"urls": img_urls, "prefix": "olx", "max_count": 5},
-            headers={"X-Secret": SECRET},
-            timeout=25
-        )
-        if r.status_code == 200:
-            res = r.json()
-            if res.get("images"):
-                return res["images"]
-    except Exception as e:
-        log(f"Media server download error: {e}")
+    for endpoint in [MEDIA_SERVER_URL, PUBLIC_MEDIA_URL]:
+        try:
+            r = requests.post(
+                f"{endpoint}/api/save-remote-images",
+                json={"urls": img_urls, "prefix": "olx", "max_count": 5},
+                headers={"X-Secret": SECRET},
+                timeout=25
+            )
+            if r.status_code == 200:
+                res = r.json()
+                if res.get("images"):
+                    return res["images"]
+        except Exception as e:
+            pass
     # Fallback to original URLs if media server is initializing
     return img_urls[:5]
 
