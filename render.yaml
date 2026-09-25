@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: adsokay-media-scraper
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: frankfurt
+    disk:
+      name: adsokay-media-disk
+      mountPath: /var/data/images
+      sizeGB: 50
+    envVars:
+      - key: IMPORTER_URL
+        value: https://admin.adsokay.com/olx_importer_backend.php
+      - key: IMPORTER_SECRET
+        value: adsokay_olx_secret_2026
+      - key: MEDIA_SECRET
+        value: adsokay_olx_secret_2026
+      - key: STORAGE_DIR
+        value: /var/data/images
+      - key: MEDIA_SERVER_URL
+        value: http://127.0.0.1:8000
