@@ -29,7 +29,7 @@ def save_images_to_render(img_urls):
         try:
             r = requests.post(
                 f"{endpoint}/api/save-remote-images",
-                json={"urls": img_urls, "prefix": "dubi", "max_count": 5},
+                json={"urls": img_urls, "prefix": "dubi", "max_count": 30},
                 headers={"X-Secret": SECRET},
                 timeout=25
             )
@@ -39,7 +39,7 @@ def save_images_to_render(img_urls):
                     return res["images"]
         except Exception as e:
             pass
-    return img_urls[:5]
+    return img_urls[:30]
 
 def get_all_dealer_urls():
     dealers = []
@@ -150,7 +150,7 @@ def scrape_and_import_dealer(dealer_url, max_cars_per_dealer=10):
                                 car_imgs.append(im)
                                 
                 # Save to Render Persistent Disk
-                render_images = save_images_to_render(car_imgs[:5])
+                render_images = save_images_to_render(car_imgs[:30])
                         
                 # Specifications
                 specs = []
