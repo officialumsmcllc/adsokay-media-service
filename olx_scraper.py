@@ -127,7 +127,7 @@ def save_images_to_render(img_urls):
         try:
             r = requests.post(
                 f"{endpoint}/api/save-remote-images",
-                json={"urls": img_urls, "prefix": "olx", "max_count": 5},
+                json={"urls": img_urls, "prefix": "olx", "max_count": 30},
                 headers={"X-Secret": SECRET},
                 timeout=25
             )
@@ -137,96 +137,238 @@ def save_images_to_render(img_urls):
                     return res["images"]
         except Exception as e:
             pass
-    # Fallback to original URLs if media server is initializing
-    return img_urls[:5]
+    # Fallback to direct high-speed URLs if media server is initializing
+    return img_urls[:30]
+
+def build_rich_description(raw_desc, title, formatted_extra_fields, city_name, price, category_name):
+    clean_text = ''
+    if raw_desc:
+        clean_text = html.unescape(raw_desc)
+        clean_text = clean_text.replace('\ufffd', ' ').replace('\r\n', '\n').replace('\r', '\n')
+        clean_text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', clean_text)
+        clean_text = re.sub(r'\n{3,}', '\n\n', clean_text).strip()
+
+    specs = []
+    if formatted_extra_fields and isinstance(formatted_extra_fields, list):
+        for f in formatted_extra_fields:
+            name = f.get('name')
+            val = f.get('formattedValue')
+            if name and val and str(val).strip() and str(val).lower() not in ['false', 'none', 'null', 'no']:
+                if isinstance(val, list):
+                    val = ', '.join(str(v) for v in val)
+                if name.lower() not in ['free ad commission', 'price type']:
+                    specs.append(f"- {name}: {val}")
+
+    parts = []
+    if clean_text and len(clean_text) > 10:
+        parts.append(clean_text)
+    else:
+        parts.append(f"{title} available for sale in excellent condition in {city_name}, Pakistan.")
+
+    if specs:
+        specs_block = "--- Key Specifications & Features ---\n" + "\n".join(specs)
+        parts.append(specs_block)
+
+    return "\n\n".join(parts)
 
 def extract_ads_from_html(html_text):
     ads = []
+    
+    # 1. Try window.state (Algolia)
+    idx = html_text.find('window.state = ')
+    if idx != -1:
+        try:
+            data, _ = json.JSONDecoder().raw_decode(html_text[idx + len('window.state = '):])
+            hits = data.get('algolia', {}).get('content', {}).get('hits', [])
+            for h in hits:
+                title = h.get('title')
+                if not title:
+                    continue
+
+                ad_id = str(h.get('id', ''))
+
+                price = 0
+                extra_fields = h.get('extraFields', {})
+                if 'price' in extra_fields and extra_fields['price'] is not None:
+                    try:
+                        price = float(extra_fields['price'])
+                    except Exception:
+                        pass
+                if price == 0 and h.get('price'):
+                    try:
+                        price = float(h.get('price'))
+                    except Exception:
+                        pass
+
+                cat_name = "General"
+                cats = h.get('category', [])
+                if cats and isinstance(cats, list) and len(cats) > 0:
+                    cat_name = cats[0].get('name', "General")
+                    if len(cats) > 1 and cats[1].get('name'):
+                        cat_name = cats[1].get('name')
+
+                state_name = "Punjab"
+                city_name = "Pakistan"
+                subarea_name = ""
+
+                locs = h.get('location', [])
+                if locs and isinstance(locs, list):
+                    for l in locs:
+                        level = l.get('level')
+                        name = l.get('name')
+                        if level == 1 and name:
+                            state_name = name
+                        elif level == 2 and name:
+                            city_name = name
+                        elif level == 3 and name:
+                            subarea_name = name
+
+                if not subarea_name:
+                    subarea_name = city_name
+
+                geo = h.get('geography', {})
+                lat = geo.get('lat', 30.3753)
+                lng = geo.get('lng', 69.3451)
+
+                contact_info = h.get('contactInfo', {})
+                raw_contact_name = contact_info.get('name') or h.get('user', {}).get('name')
+                seller_name = clean_seller_name(raw_contact_name, ad_id)
+                seller_id = h.get('userExternalID') or ad_id
+
+                raw_desc = h.get('description') or ''
+                formatted_fields = h.get('formattedExtraFields') or []
+                rich_desc = build_rich_description(raw_desc, title, formatted_fields, city_name, price, cat_name)
+
+                # Generate valid phone
+                h_int = int(hashlib.md5((str(ad_id) + '_phone_2026').encode()).hexdigest(), 16)
+                prefix = PAK_PREFIXES[h_int % len(PAK_PREFIXES)]
+                rest = str((h_int // 100) % 9000000 + 1000000)
+                phone_number = f"{prefix}{rest}"
+
+                # Extract All Real Photos (High Quality)
+                photo_urls = []
+                photos = h.get('photos', [])
+                if isinstance(photos, list):
+                    sorted_photos = sorted(photos, key=lambda x: x.get('orderIndex', 0) if isinstance(x, dict) else 0)
+                    seen_p = set()
+                    for p in sorted_photos:
+                        if not isinstance(p, dict):
+                            continue
+                        p_id = p.get('id')
+                        p_ext = p.get('externalID')
+                        img_url = None
+                        if p_id:
+                            img_url = f"https://images.olx.com.pk/thumbnails/{p_id}-800x600.webp"
+                        elif p_ext:
+                            img_url = f"https://apollo.olx.com.pk/v1/files/{p_ext}/image;s=800x600;q=80"
+                        
+                        if img_url and img_url not in seen_p:
+                            seen_p.add(img_url)
+                            photo_urls.append(img_url)
+
+                render_images = save_images_to_render(photo_urls)
+
+                ads.append({
+                    "title": title,
+                    "description": rich_desc,
+                    "price": price,
+                    "category_name": cat_name,
+                    "seller_name": seller_name,
+                    "seller_id": seller_id,
+                    "contact": phone_number,
+                    "city": city_name,
+                    "state": state_name,
+                    "subarea": subarea_name,
+                    "country": "Pakistan",
+                    "country_code": "PK",
+                    "latitude": lat,
+                    "longitude": lng,
+                    "images": render_images
+                })
+            if ads:
+                return ads
+        except Exception as e:
+            log(f"window.state parsing error: {e}")
+
+    # 2. Fallback: __NEXT_DATA__
     match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', html_text, re.DOTALL)
-    if not match:
-        return ads
-
-    try:
-        data = json.loads(match.group(1))
-        initial_state = data.get('props', {}).get('pageProps', {}).get('initialState', {})
-        items = initial_state.get('items', {}).get('elements', [])
-        
-        for item in items:
-            title = item.get('title')
-            if not title:
-                continue
-
-            ad_id = str(item.get('id', ''))
-            price = item.get('price', {}).get('value', {}).get('raw', 0)
-            description = item.get('description', title)
+    if match:
+        try:
+            data = json.loads(match.group(1))
+            initial_state = data.get('props', {}).get('pageProps', {}).get('initialState', {})
+            items = initial_state.get('items', {}).get('elements', [])
             
-            raw_user_name = item.get('user', {}).get('name') if isinstance(item.get('user'), dict) else None
-            seller_name = clean_seller_name(raw_user_name, ad_id)
-            seller_id = str(item.get('user', {}).get('id') if isinstance(item.get('user'), dict) else ad_id)
-            
-            h = int(hashlib.md5(ad_id.encode()).hexdigest(), 16)
-            prefix = PAK_PREFIXES[h % len(PAK_PREFIXES)]
-            phone_num = prefix + str(h % 9000000 + 1000000).zfill(7)
-            
-            # Location
-            loc_data = item.get('location', {})
-            city = 'Pakistan'
-            state = 'Punjab'
-            subarea = ''
-            if isinstance(loc_data, dict):
-                loc_list = loc_data.get('list', [])
-                if len(loc_list) >= 3:
-                    state = loc_list[0].get('name', 'Punjab')
-                    city = loc_list[1].get('name', 'Pakistan')
-                    subarea = loc_list[2].get('name', '')
-                elif len(loc_list) == 2:
-                    state = loc_list[0].get('name', 'Punjab')
-                    city = loc_list[1].get('name', 'Pakistan')
-                elif len(loc_list) == 1:
-                    city = loc_list[0].get('name', 'Pakistan')
-                    
-            coords = loc_data.get('coordinates', {}) if isinstance(loc_data, dict) else {}
-            lat = coords.get('lat') if isinstance(coords, dict) else 30.674387
-            lng = coords.get('lon') if isinstance(coords, dict) else 73.083372
-            
-            # Category
-            cat_data = item.get('category', {})
-            cat_name = 'General'
-            if isinstance(cat_data, dict):
-                cat_name = cat_data.get('name', 'General')
+            for item in items:
+                title = item.get('title')
+                if not title:
+                    continue
 
-            # Images
-            raw_img_urls = []
-            for photo in item.get('photos', []):
-                if isinstance(photo, dict) and photo.get('full'):
-                    raw_img_urls.append(photo['full'])
-                elif isinstance(photo, dict) and photo.get('thumbnail'):
-                    raw_img_urls.append(photo['thumbnail'])
+                ad_id = str(item.get('id', ''))
+                price = item.get('price', {}).get('value', {}).get('raw', 0)
+                description = item.get('description', title)
+                
+                raw_user_name = item.get('user', {}).get('name') if isinstance(item.get('user'), dict) else None
+                seller_name = clean_seller_name(raw_user_name, ad_id)
+                seller_id = str(item.get('user', {}).get('id') if isinstance(item.get('user'), dict) else ad_id)
+                
+                h = int(hashlib.md5(ad_id.encode()).hexdigest(), 16)
+                prefix = PAK_PREFIXES[h % len(PAK_PREFIXES)]
+                phone_num = prefix + str(h % 9000000 + 1000000).zfill(7)
+                
+                loc_data = item.get('location', {})
+                city = 'Pakistan'
+                state = 'Punjab'
+                subarea = ''
+                if isinstance(loc_data, dict):
+                    loc_list = loc_data.get('list', [])
+                    if len(loc_list) >= 3:
+                        state = loc_list[0].get('name', 'Punjab')
+                        city = loc_list[1].get('name', 'Pakistan')
+                        subarea = loc_list[2].get('name', '')
+                    elif len(loc_list) == 2:
+                        state = loc_list[0].get('name', 'Punjab')
+                        city = loc_list[1].get('name', 'Pakistan')
+                    elif len(loc_list) == 1:
+                        city = loc_list[0].get('name', 'Pakistan')
+                        
+                coords = loc_data.get('coordinates', {}) if isinstance(loc_data, dict) else {}
+                lat = coords.get('lat') if isinstance(coords, dict) else 30.674387
+                lng = coords.get('lon') if isinstance(coords, dict) else 73.083372
+                
+                cat_data = item.get('category', {})
+                cat_name = 'General'
+                if isinstance(cat_data, dict):
+                    cat_name = cat_data.get('name', 'General')
 
-            # SAVE ON RENDER PERSISTENT DISK
-            render_images = save_images_to_render(raw_img_urls)
+                raw_img_urls = []
+                for photo in item.get('photos', []):
+                    if isinstance(photo, dict) and photo.get('full'):
+                        raw_img_urls.append(photo['full'])
+                    elif isinstance(photo, dict) and photo.get('thumbnail'):
+                        raw_img_urls.append(photo['thumbnail'])
 
-            ads.append({
-                "title": title,
-                "description": description,
-                "price": price,
-                "category_name": cat_name,
-                "seller_name": seller_name,
-                "seller_id": seller_id,
-                "contact": phone_num,
-                "city": city,
-                "state": state,
-                "subarea": subarea,
-                "country": "Pakistan",
-                "country_code": "PK",
-                "latitude": lat,
-                "longitude": lng,
-                "images": render_images
-            })
+                render_images = save_images_to_render(raw_img_urls)
+
+                ads.append({
+                    "title": title,
+                    "description": description,
+                    "price": price,
+                    "category_name": cat_name,
+                    "seller_name": seller_name,
+                    "seller_id": seller_id,
+                    "contact": phone_num,
+                    "city": city,
+                    "state": state,
+                    "subarea": subarea,
+                    "country": "Pakistan",
+                    "country_code": "PK",
+                    "latitude": lat,
+                    "longitude": lng,
+                    "images": render_images
+                })
+        except Exception as e:
+            log(f"__NEXT_DATA__ parsing error: {e}")
             
-    except Exception as e:
-        log(f"JSON parsing error: {e}")
-        
     return ads
 
 def post_to_backend(ads):

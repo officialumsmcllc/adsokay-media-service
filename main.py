@@ -35,7 +35,7 @@ PUBLIC_URL = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
 class DownloadImagesRequest(BaseModel):
     urls: List[str]
     prefix: Optional[str] = "img"
-    max_count: Optional[int] = 5
+    max_count: Optional[int] = 30
 
 
 def process_and_save_image(image_bytes: bytes, filename: str) -> Optional[str]:
