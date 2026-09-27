@@ -119,3 +119,39 @@ def save_remote_images(req: DownloadImagesRequest, x_secret: Optional[str] = Hea
             print(f"Error downloading {raw_url}: {e}", flush=True)
 
     return {"status": "success", "images": saved_urls}
+
+
+@app.post("/api/upload-file")
+async def upload_direct_file(
+    file: UploadFile = File(...),
+    folder: Optional[str] = "upload",
+    x_secret: Optional[str] = Header(None)
+):
+    """Direct multipart file upload from App API / Web backend -> stores permanently on Render persistent disk"""
+    if x_secret and x_secret != MEDIA_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    content = await file.read()
+    if not content or len(content) < 10:
+        raise HTTPException(status_code=400, detail="Empty file payload")
+
+    base_url = PUBLIC_URL or "https://adsokay-media-service.onrender.com"
+    content_hash = hashlib.md5(content).hexdigest()
+    filename = f"{folder}_{content_hash}.webp"
+    
+    saved = process_and_save_image(content, filename)
+    if not saved:
+        orig_ext = os.path.splitext(file.filename or "")[1] or ".jpg"
+        raw_filename = f"{folder}_{content_hash}{orig_ext}"
+        filepath = os.path.join(STORAGE_DIR, raw_filename)
+        with open(filepath, "wb") as f:
+            f.write(content)
+        filename = raw_filename
+
+    file_url = f"{base_url}/images/{filename}"
+    return {
+        "status": "success",
+        "url": file_url,
+        "filename": filename
+    }
+
