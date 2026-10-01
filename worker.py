@@ -22,15 +22,12 @@ def main():
             olx_added = run_olx_cycle()
             log(f"--> Step 1 Completed. Total OLX ads added: {olx_added}")
             
-            # Short rest between tasks
-            time.sleep(15)
+            # UAE DubiCars Scraper disabled by user preference (Running OLX only)
+            # log("--> Step 2: Running DubiCars UAE Motors Scraper...")
+            # dubi_added = run_dubicars_cycle()
+            # log(f"--> Step 2 Completed. Total DubiCars ads added: {dubi_added}")
             
-            # 2. Run DubiCars UAE Scraper
-            log("--> Step 2: Running DubiCars UAE Motors Scraper...")
-            dubi_added = run_dubicars_cycle()
-            log(f"--> Step 2 Completed. Total DubiCars ads added: {dubi_added}")
-            
-            log(f"========== Cycle #{cycle_count} Completed Successfully ==========")
+            log(f"========== Cycle #{cycle_count} Completed Successfully (OLX Sync Only) ==========")
             cycle_count += 1
             
             # Sleep 15 minutes before the next full cycle
