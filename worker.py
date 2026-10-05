@@ -21,18 +21,27 @@ def main():
             log("--> Step 1: Running OLX Pakistan Multi-City Scraper...")
             olx_added = run_olx_cycle()
             log(f"--> Step 1 Completed. Total OLX ads added: {olx_added}")
+
+            # 2. Run 24/7 Cloud Auto-Indexing (Push new ads directly to Search Engines)
+            log("--> Step 2: Running 24/7 Cloud Search Engine Auto-Indexing...")
+            try:
+                from indexer import run_cloud_indexing
+                run_cloud_indexing()
+            except Exception as ie:
+                log(f"--> Indexing notice: {ie}")
             
             # UAE DubiCars Scraper disabled by user preference (Running OLX only)
-            # log("--> Step 2: Running DubiCars UAE Motors Scraper...")
+            # log("--> Step 3: Running DubiCars UAE Motors Scraper...")
             # dubi_added = run_dubicars_cycle()
-            # log(f"--> Step 2 Completed. Total DubiCars ads added: {dubi_added}")
+            # log(f"--> Step 3 Completed. Total DubiCars ads added: {dubi_added}")
             
-            log(f"========== Cycle #{cycle_count} Completed Successfully (OLX Sync Only) ==========")
+            log(f"========== Cycle #{cycle_count} Completed Successfully (Sync & Auto-Index Done) ==========")
             cycle_count += 1
             
             # Sleep 15 minutes before the next full cycle
             log("Sleeping 15 minutes before next cycle...")
             time.sleep(900)
+
             
         except Exception as e:
             log(f"Unexpected error in worker loop: {e}")
