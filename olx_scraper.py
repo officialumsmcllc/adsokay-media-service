@@ -92,8 +92,8 @@ PAKISTAN_STREAMS = [
 ]
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'User-Agent': 'okhttp/4.12.0',
+    'Accept': 'application/json, text/html, */*',
     'Accept-Language': 'en-US,en;q=0.9',
 }
 
@@ -129,7 +129,7 @@ def save_images_to_render(img_urls):
                 f"{endpoint}/api/save-remote-images",
                 json={"urls": img_urls, "prefix": "olx", "max_count": 30},
                 headers={"X-Secret": SECRET},
-                timeout=25
+                timeout=4
             )
             if r.status_code == 200:
                 res = r.json()
@@ -402,6 +402,19 @@ def run_olx_cycle():
                 if ads:
                     added = post_to_backend(ads)
                     total_added += added
+            else:
+                log(f"Stream {stream_name} returned HTTP {r.status_code}")
+                if r.status_code in [403, 503]:
+                    fallback_headers = {
+                        'User-Agent': 'okhttp/4.9.0',
+                        'Accept': 'application/json, text/html, */*'
+                    }
+                    r2 = requests.get(url, headers=fallback_headers, timeout=20)
+                    if r2.status_code == 200:
+                        ads = extract_ads_from_html(r2.text)
+                        if ads:
+                            added = post_to_backend(ads)
+                            total_added += added
             time.sleep(3)
         except Exception as e:
             log(f"Stream error on {stream_name}: {e}")

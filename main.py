@@ -87,7 +87,8 @@ def save_remote_images(req: DownloadImagesRequest, x_secret: Optional[str] = Hea
 
     base_url = PUBLIC_URL or ""
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        "User-Agent": "okhttp/4.12.0",
+        "Accept": "image/webp,image/*,*/*;q=0.8"
     }
 
     saved_urls = []
